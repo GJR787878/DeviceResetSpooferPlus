@@ -19,6 +19,7 @@
 #include <dlfcn.h>
 #include <link.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #include <android/log.h>
 #include <elf.h>
 
@@ -95,7 +96,7 @@ static bool make_writable(uintptr_t addr, size_t size) {
 
 // 对单个库执行 PLT hook
 static bool hook_library_plt(const LibraryInfo &lib, const char *symbol, void *hook_func) {
-    const uint8_t *base = reinterpret_cast<const uint8_t*>(lib.base_addr);
+    uint8_t *base = reinterpret_cast<uint8_t*>(lib.base_addr);
 
     // 读取 ELF header
     const ElfW(Ehdr) *ehdr = reinterpret_cast<const ElfW(Ehdr)*>(base);
