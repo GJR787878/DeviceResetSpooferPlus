@@ -54,9 +54,11 @@ jobs:
       - name: Clone Dobby (native inline hook)
         run: |
           DOBBY_DIR="app/src/main/cpp/Dobby"
-          if [ ! -d "$DOBBY_DIR/CMakeLists.txt" ]; then
-            git clone --depth 1 https://github.com/jmgao/Dobby.git "$DOBBY_DIR"
-            echo "Dobby cloned to $DOBBY_DIR"
+          if [ ! -f "$DOBBY_DIR/CMakeLists.txt" ]; then
+            curl -sL https://github.com/jmgao/Dobby/archive/refs/heads/master.tar.gz -o /tmp/dobby.tar.gz
+            mkdir -p "$DOBBY_DIR"
+            tar xzf /tmp/dobby.tar.gz -C "$DOBBY_DIR" --strip-components=1
+            echo "Dobby downloaded to $DOBBY_DIR"
           else
             echo "Dobby already exists"
           fi
