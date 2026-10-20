@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 玻璃卡片 - 渐变描边+深色填充+顶部高光+底部阴影，12dp圆角 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 渐变描边 -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#66FFFFFF"
+                android:centerColor="#26FFFFFF"
+                android:endColor="#14FFFFFF" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+    <!-- 半透明深色填充 -->
+    <item
+        android:left="1dp"
+        android:top="1dp"
+        android:right="1dp"
+        android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#331C1C1E" />
+            <corners android:radius="11dp" />
+        </shape>
+    </item>
+    <!-- 顶部高光（集中在顶部） -->
+    <item
+        android:left="1dp"
+        android:top="1dp"
+        android:right="1dp"
+        android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#26FFFFFF"
+                android:centerColor="#0AFFFFFF"
+                android:endColor="#00000000" />
+            <corners android:radius="11dp" />
+        </shape>
+    </item>
+    <!-- 底部内阴影 -->
+    <item
+        android:left="1dp"
+        android:top="1dp"
+        android:right="1dp"
+        android:bottom="1dp">
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#00000000"
+                android:centerColor="#0A000000"
+                android:endColor="#26000000" />
+            <corners android:radius="11dp" />
+        </shape>
+    </item>
+</layer-list>

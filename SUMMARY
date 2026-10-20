@@ -1,0 +1,1 @@
+DeviceResetSpooferPlus — 增强版设备伪装 LSPosed 模块。在 DeviceResetSpoofer 基础上新增：P0 Widevine DRM ID + 蓝牙 MAC hook + /sdcard 残留清理；P1 Native 层系统属性 hook（Dobby inline hook __system_property_get，拦截 JNI 直接读取）；P2 传感器指纹 + Build 补充字段 + Settings.Global 扩展。支持应用内勾选目标即自动写入作用域生效（root，零点击）。

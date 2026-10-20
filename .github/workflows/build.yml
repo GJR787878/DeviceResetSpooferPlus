@@ -1,0 +1,118 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+    # 自动更新 latest_version.txt 的提交不重复触发构建
+    paths-ignore: [ 'latest_version.txt' ]
+    tags: [ 'v*', '[0-9]*-*.*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        # android-actions/setup-android@v3 已停止维护，与新 cmdline-tools 不兼容
+        # (sdkmanager 报 Failed to find package 'tools')，改为接受 license，
+        # 缺失的 platform/build-tools 由 Gradle 自动下载。
+        run: |
+          mkdir -p "$ANDROID_HOME/licenses"
+          printf "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > "$ANDROID_HOME/licenses/android-sdk-license"
+          echo "Android SDK licenses accepted at $ANDROID_HOME"
+          # 安装 NDK（native hook 需要）
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;25.2.9519653" 2>/dev/null || \
+          yes | sdkmanager --install "ndk;25.2.9519653" 2>/dev/null || \
+          echo "NDK install attempted (may be pre-installed)"
+          echo "NDK versions: $(ls $ANDROID_HOME/ndk/ 2>/dev/null || echo 'none')"
+
+      - name: Decode signing keystore
+        env:
+          DRS_KEYSTORE_B64: ${{ secrets.DRS_KEYSTORE_B64 }}
+        run: |
+          mkdir -p keystore
+          echo "$DRS_KEYSTORE_B64" | base64 -d > keystore/devicereset-release.keystore
+          echo "DRS_KEYSTORE_PATH=keystore/devicereset-release.keystore" >> "$GITHUB_ENV"
+          echo "keystore decoded: $(ls -la keystore/devicereset-release.keystore)"
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Verify APK signature
+        run: |
+          apksigner="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          certs=$("$apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk)
+          echo "$certs"
+          # 断言证书指纹与固定keystore一致(DRS_Key_2026!生成的证书)
+          echo "$certs" | grep -q "d21cd192f0b2e4c0cd81b52db9b8b5e2fe62376fd87b13e374560f124ad7f843" \
+            && echo "SIGNATURE OK: 与固定keystore指纹一致" \
+            || { echo "SIGNATURE MISMATCH"; exit 1; }
+
+      # 仅在 main 分支运行时更新版本文件；分支/PR构建跳过，避免 push main 失败导致无产物
+      - name: Update latest_version.txt (jsDelivr CDN 检测源)
+        continue-on-error: true
+        if: github.ref == 'refs/heads/main'
+        run: |
+          VER=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle)
+          echo "当前版本: $VER"
+          if [ -f latest_version.txt ] && [ "$(cat latest_version.txt)" = "$VER" ]; then
+            echo "版本文件已是最新，无需更新"
+          else
+            echo "$VER" > latest_version.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add latest_version.txt
+            git commit -m "自动更新 latest_version.txt 为 $VER"
+            git push origin main
+            echo "已更新并推送 latest_version.txt"
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeviceResetSpooferPlus-debug
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+
+      # ========= 仅当打 tag（v*）时：自动发布 Release =========
+      - name: Package APK (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk ./DeviceResetSpoofer-${{ github.ref_name }}.apk
+          ls -la DeviceResetSpoofer-${{ github.ref_name }}.apk
+
+      - name: Create GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DeviceResetSpoofer ${{ github.ref_name }}
+          files: |
+            DeviceResetSpoofer-${{ github.ref_name }}.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

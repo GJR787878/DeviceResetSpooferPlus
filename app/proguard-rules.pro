@@ -1,0 +1,2 @@
+-keep class io.github.gjr787878.devicereset.xposed.** { *; }
+-dontwarn de.robv.android.xposed.**

@@ -1,0 +1,216 @@
+package io.github.gjr787878.deviceresetplus.xposed;
+
+import android.content.Context;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+
+import de.robv.android.xposed.XposedBridge;
+
+/**
+ * 哨兵文件检测器 —— 整个模块的核心。
+ *
+ * 原理：
+ * - 在目标APP的私有目录写入一个隐藏标记文件 .identity_sentinel，内容为当前身份的JSON。
+ * - 每次目标APP冷启动时，在最早的hook点检查这个文件是否存在。
+ * - 文件不存在 → 用户刚清除了应用数据（清数据会删除整个私有目录）→ 生成全新身份。
+ * - 文件存在 → 读取并沿用旧身份。
+ */
+public class SentinelDetector {
+    private static final String SENTINEL_FILE = ".identity_sentinel";
+    /** 运行时值文件：只由模块在目标进程每次加载身份时写，记录进程当前真正在用的值（UI不写此文件） */
+    private static final String RUNTIME_FILE = ".identity_runtime";
+    private static Identity cachedIdentity = null;
+    private static boolean checked = false;
+
+    public static Identity checkAndGetIdentity(Context context) {
+        String internalDir = context.getFilesDir().getAbsolutePath();
+        // 外部存储备份路径：/sdcard/Android/data/<目标包名>/files/
+        // 目标APP进程有权限写自己的外部目录，UI端可通过root读取
+        String externalDir = null;
+        try {
+            File ext = context.getExternalFilesDir(null);
+            if (ext != null) externalDir = ext.getAbsolutePath();
+        } catch (Throwable ignored) {}
+        return checkAndGetIdentityByDirs(internalDir, externalDir);
+    }
+
+    public static Identity checkAndGetIdentityByDir(String filesDirPath) {
+        return checkAndGetIdentityByDirs(filesDirPath, null);
+    }
+
+    public static Identity checkAndGetIdentityByDirs(String internalDirPath, String externalDirPath) {
+        if (checked && cachedIdentity != null) {
+            return cachedIdentity;
+        }
+        XposedBridge.log("[DeviceReset] SentinelDetector internal=" + internalDirPath + " external=" + externalDirPath);
+        try {
+            File filesDir = new File(internalDirPath);
+            File sentinel = new File(filesDir, SENTINEL_FILE);
+            XposedBridge.log("[DeviceReset] sentinel path=" + sentinel.getAbsolutePath() + " exists=" + sentinel.exists());
+
+            if (sentinel.exists()) {
+                try {
+                    FileInputStream fis = new FileInputStream(sentinel);
+                    byte[] buffer = new byte[(int) sentinel.length()];
+                    int read = fis.read(buffer);
+                    fis.close();
+                    String json = new String(buffer, 0, read, StandardCharsets.UTF_8);
+                    Identity id = Identity.fromJson(json);
+                    if (id != null && id.androidId != null) {
+                        cachedIdentity = id;
+                        checked = true;
+                        XposedBridge.log("[DeviceReset] 读取到已有身份 androidId=" + id.androidId);
+                        // 同步备份到外部存储
+                        if (externalDirPath != null) {
+                            writeBackup(externalDirPath, json);
+                            writeRuntime(externalDirPath, json);
+                        }
+                        return id;
+                    }
+                    XposedBridge.log("[DeviceReset] 哨兵文件存在但解析失败，重新生成");
+                } catch (Throwable readErr) {
+                    XposedBridge.log("[DeviceReset] 读取哨兵文件失败: " + readErr.getMessage());
+                }
+            }
+
+            // 内部哨兵不存在或解析失败 → 先尝试从外部备份恢复（保证与UI显示值一致，不另生成新身份）
+            if (externalDirPath != null) {
+                try {
+                    File extDir = new File(externalDirPath);
+                    File extSentinel = new File(extDir, SENTINEL_FILE);
+                    XposedBridge.log("[DeviceReset] 内部缺失，尝试外部备份 " + extSentinel.getAbsolutePath() + " exists=" + extSentinel.exists());
+                    if (extSentinel.exists()) {
+                        FileInputStream efis = new FileInputStream(extSentinel);
+                        byte[] ebuf = new byte[(int) extSentinel.length()];
+                        int eread = efis.read(ebuf);
+                        efis.close();
+                        String extJson = new String(ebuf, 0, eread, StandardCharsets.UTF_8);
+                        Identity extId = Identity.fromJson(extJson);
+                        if (extId != null && extId.androidId != null) {
+                            // 外部备份有效 → 回写内部，保持两处一致
+                            if (!filesDir.exists()) filesDir.mkdirs();
+                            boolean restoreOk = writeFile(sentinel, extJson);
+                            XposedBridge.log("[DeviceReset] 从外部备份恢复身份 " + (restoreOk ? "成功" : "失败") + " androidId=" + extId.androidId);
+                            writeRuntime(externalDirPath, extJson);
+                            cachedIdentity = extId;
+                            checked = true;
+                            return extId;
+                        }
+                        XposedBridge.log("[DeviceReset] 外部备份解析失败，将重新生成");
+                    }
+                } catch (Throwable extErr) {
+                    XposedBridge.log("[DeviceReset] 读取外部备份异常: " + extErr.getMessage());
+                }
+            }
+
+            // 内部、外部都没有身份 → 返回 null，不自动生成、不伪装。
+            // 身份必须由用户在模块内手动触发（点「随机」/「保存」）写入模块配置后才会生效；
+            // 旧版「清数据自动生成新身份」行为已改为手动触发，未设置的应用保持真实值。
+            XposedBridge.log("[DeviceReset] 未找到任何身份（内部/外部哨兵均不存在），跳过伪装，保持真实值");
+            return null;
+        } catch (Throwable t) {
+            XposedBridge.log("[DeviceReset] SentinelDetector异常: " + t.getMessage());
+            // 异常时不自动生成身份，保持真实值（身份必须手动触发）
+            checked = true;
+            return null;
+        }
+    }
+
+    /** 用FileOutputStream写入文件，返回是否成功 */
+    private static boolean writeFile(File target, String content) {
+        try {
+            if (target.getParentFile() != null && !target.getParentFile().exists()) {
+                boolean pm = target.getParentFile().mkdirs();
+                XposedBridge.log("[DeviceReset] writeFile mkdirs parent=" + target.getParent() + " result=" + pm);
+            }
+            FileOutputStream fos = new FileOutputStream(target);
+            fos.write(content.getBytes(StandardCharsets.UTF_8));
+            fos.flush();
+            fos.getFD().sync();
+            fos.close();
+            boolean ok = target.exists() && target.length() > 0;
+            XposedBridge.log("[DeviceReset] writeFile FileOutputStream " + (ok ? "成功" : "失败(空文件)")
+                    + " path=" + target.getAbsolutePath() + " size=" + (target.exists() ? target.length() : -1));
+            return ok;
+        } catch (Throwable e) {
+            XposedBridge.log("[DeviceReset] FileOutputStream写入失败 " + target.getAbsolutePath() + ": " + e.getMessage());
+            // 兜底：用sh -c写入
+            try {
+                Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c",
+                        "cat > '" + target.getAbsolutePath() + "' << 'DRS_EOF'\n" + content + "\nDRS_EOF\n"});
+                p.waitFor();
+                boolean ok = target.exists() && target.length() > 0;
+                XposedBridge.log("[DeviceReset] sh兜底写入 " + (ok ? "成功" : "失败") + " exit=" + p.exitValue()
+                        + " path=" + target.getAbsolutePath() + " size=" + (target.exists() ? target.length() : -1));
+                return ok;
+            } catch (Throwable e2) {
+                XposedBridge.log("[DeviceReset] sh写入也失败: " + e2.getMessage());
+                return false;
+            }
+        }
+    }
+
+    /** 写入外部存储备份 */
+    private static boolean writeBackup(String externalDirPath, String json) {
+        try {
+            File extDir = new File(externalDirPath);
+            if (!extDir.exists()) extDir.mkdirs();
+            File backup = new File(extDir, SENTINEL_FILE);
+            return writeFile(backup, json);
+        } catch (Throwable e) {
+            XposedBridge.log("[DeviceReset] 外部备份异常: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** 写入运行时值文件（只由模块写，记录进程本次真正加载使用的身份，UI不写此文件） */
+    private static boolean writeRuntime(String externalDirPath, String json) {
+        try {
+            File extDir = new File(externalDirPath);
+            if (!extDir.exists()) extDir.mkdirs();
+            File runtime = new File(extDir, RUNTIME_FILE);
+            boolean ok = writeFile(runtime, json);
+            XposedBridge.log("[DeviceReset] 运行时值写入 " + (ok ? "成功" : "失败") + " androidId=" );
+            return ok;
+        } catch (Throwable e) {
+            XposedBridge.log("[DeviceReset] 运行时值写入异常: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 重置身份：root 删除目标应用的内部+外部哨兵（含运行时文件）。
+     * 必须用 root：第三方应用无权删除其他应用私有目录文件（createPackageContext 方式无效）；
+     * 且必须同时删外部哨兵，否则 MainHook 会从外部备份恢复旧伪装值（重置形同虚设）。
+     */
+    public static boolean resetIdentity(String packageName, Context context) {
+        try {
+            String[] paths = {
+                    "/data/user/0/" + packageName + "/files/.identity_sentinel",
+                    "/data/user/0/" + packageName + "/files/.identity_runtime",
+                    "/sdcard/Android/data/" + packageName + "/files/.identity_sentinel",
+                    "/sdcard/Android/data/" + packageName + "/files/.identity_runtime"
+            };
+            Process su = Runtime.getRuntime().exec("su");
+            java.io.DataOutputStream os = new java.io.DataOutputStream(su.getOutputStream());
+            for (String p : paths) {
+                os.writeBytes("rm -f '" + p + "' 2>/dev/null\n");
+            }
+            os.writeBytes("exit\n");
+            os.flush();
+            su.waitFor();
+            cachedIdentity = null;
+            checked = false;
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    public static Identity getCurrentIdentity() {
+        return cachedIdentity;
+    }
+}
