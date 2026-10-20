@@ -51,6 +51,17 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Clone Dobby (native inline hook)
+        run: |
+          DOBBY_DIR="app/src/main/cpp/Dobby"
+          if [ ! -d "$DOBBY_DIR/CMakeLists.txt" ]; then
+            git clone --depth 1 https://github.com/jmgao/Dobby.git "$DOBBY_DIR"
+            echo "Dobby cloned to $DOBBY_DIR"
+          else
+            echo "Dobby already exists"
+          fi
+          ls -la "$DOBBY_DIR/CMakeLists.txt"
+
       - name: Cache Gradle packages
         uses: actions/cache@v4
         with:

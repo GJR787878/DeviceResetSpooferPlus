@@ -86,3 +86,6 @@ lint/outputs/
 lint/tmp/
 lint/reports/
 keystore/
+
+# Dobby native hook (CI clones at build time)
+app/src/main/cpp/Dobby/
