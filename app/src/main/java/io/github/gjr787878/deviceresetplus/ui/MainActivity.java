@@ -39,8 +39,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String LANG_ZH = "zh";
     private static final String LANG_EN = "en";
     private static final String LANG_RU = "ru";
-    private static final String UPDATE_REPO = "GJR787878/DeviceResetSpooferX";
-    private static final String REPO_HOME_URL = "https://github.com/GJR787878/DeviceResetSpooferX";
+    private static final String UPDATE_REPO = "GJR787878/DeviceResetSpooferPlus";
+    private static final String REPO_HOME_URL = "https://github.com/GJR787878/DeviceResetSpooferPlus";
 
     private static final int COLOR_WHITE = 0xFFFFFFFF;
     private static final int COLOR_BLUE = 0xFF0A84FF;
@@ -532,6 +532,19 @@ public class MainActivity extends AppCompatActivity {
         String lCarrierCode = t("运营商代码: ", "Carrier Code: ", "Код оператора: ");
         String lImsi = t("IMSI: ", "IMSI: ", "IMSI: ");
         String lIccid = t("ICCID: ", "ICCID: ", "ICCID: ");
+        // P0
+        String lDrm = t("Widevine DRM: ", "Widevine DRM: ", "Widevine DRM: ");
+        String lBtMac = t("蓝牙MAC: ", "BT MAC: ", "BT MAC: ");
+        // P2 Build
+        String lBuildTags = "Build Tags: ";
+        String lBuildType = "Build Type: ";
+        String lBuildUser = "Build User: ";
+        String lBuildHost = "Build Host: ";
+        String lBuildDisplay = "Build Display: ";
+        // P2 Sensor
+        String lSensorVendor = t("传感器厂商: ", "Sensor Vendor: ", "Производитель: ");
+        String lSensorName = t("传感器名称: ", "Sensor Name: ", "Название: ");
+        String lSensorVersion = t("传感器版本: ", "Sensor Version: ", "Версия: ");
 
         if (id == null) {
             sb.append(t("未设置伪装值。\n点击下方「随机」或「自定义」生成（手动触发后生效）。",
@@ -546,17 +559,38 @@ public class MainActivity extends AppCompatActivity {
             if (id.serial != null) sb.append(lSerial).append(id.serial).append("\n");
             if (id.macAddress != null) sb.append(lMac).append(id.macAddress).append("\n");
             if (id.gsfId != null) sb.append(lGsf).append(id.gsfId).append("\n");
+            // P0: 硬件级指纹
+            if (id.drmId != null) sb.append(lDrm).append(id.drmId).append("\n");
+            if (id.bluetoothMac != null) sb.append(lBtMac).append(id.bluetoothMac).append("\n");
             sb.append("\n");
             if (id.brand != null) sb.append(lBrand).append(id.brand).append("\n");
             if (id.model != null) sb.append(lModel).append(id.model).append("\n");
             if (id.manufacturer != null) sb.append(lMfr).append(id.manufacturer).append("\n");
             if (id.fingerprint != null) sb.append(lFp).append(id.fingerprint).append("\n");
             if (id.buildId != null) sb.append(lBuild).append(id.buildId).append("\n");
+            // P2: Build 补充字段
+            if (id.buildTags != null) sb.append(lBuildTags).append(id.buildTags).append("\n");
+            if (id.buildType != null) sb.append(lBuildType).append(id.buildType).append("\n");
+            if (id.buildUser != null) sb.append(lBuildUser).append(id.buildUser).append("\n");
+            if (id.buildHost != null) sb.append(lBuildHost).append(id.buildHost).append("\n");
+            if (id.buildDisplay != null) sb.append(lBuildDisplay).append(id.buildDisplay).append("\n");
             sb.append("\n");
             if (id.networkOperatorName != null) sb.append(lCarrier).append(id.networkOperatorName).append("\n");
             if (id.networkOperator != null) sb.append(lCarrierCode).append(id.networkOperator).append("\n");
             if (id.imsi != null) sb.append(lImsi).append(id.imsi).append("\n");
             if (id.iccid != null) sb.append(lIccid).append(id.iccid).append("\n");
+            // P2: 传感器指纹
+            if (id.sensorVendor != null || id.sensorName != null || id.sensorVersion != null) {
+                sb.append("\n");
+                if (id.sensorVendor != null) sb.append(lSensorVendor).append(id.sensorVendor).append("\n");
+                if (id.sensorName != null) sb.append(lSensorName).append(id.sensorName).append("\n");
+                if (id.sensorVersion != null) sb.append(lSensorVersion).append(id.sensorVersion).append("\n");
+            }
+            // P1: Native 属性同步状态
+            sb.append("\n--- P1 Native Properties ---\n");
+            sb.append(t("ro.serialno / ro.build.fingerprint 等系统属性自动同步到 Native PLT hook",
+                    "ro.serialno / ro.build.fingerprint auto-synced to Native PLT hook",
+                    "Системные свойства автоматически синхронизированы в Native PLT hook")).append("\n");
         }
         content.setText(sb.toString());
         sv.addView(content);
@@ -742,14 +776,41 @@ public class MainActivity extends AppCompatActivity {
         addFieldRow(form, t("序列号", "Serial", "Серийный"), workingId[0].serial, d, val -> workingId[0].serial = val, true);
         addFieldRow(form, t("MAC地址", "MAC Address", "MAC-адрес"), workingId[0].macAddress, d, val -> workingId[0].macAddress = val, true);
 
+        // P0: 硬件级指纹
+        addSectionLabel(form, t("硬件指纹 (P0)", "Hardware Fingerprint (P0)", "Аппаратный отпечаток (P0)"), d);
+        addFieldRow(form, t("Widevine DRM ID", "Widevine DRM ID", "Widevine DRM ID"), workingId[0].drmId, d, val -> workingId[0].drmId = val, true);
+        addFieldRow(form, t("蓝牙MAC", "Bluetooth MAC", "Bluetooth MAC"), workingId[0].bluetoothMac, d, val -> workingId[0].bluetoothMac = val, true);
+
         addSectionLabel(form, t("Build信息", "Build Info", "Build инфо"), d);
         addFieldRow(form, "Build ID", workingId[0].buildId, d, val -> workingId[0].buildId = val, true);
         addFieldRow(form, "Bootloader", workingId[0].bootloader, d, val -> workingId[0].bootloader = val, true);
         addFieldRow(form, t("Radio版本", "Radio Version", "Версия Radio"), workingId[0].radioVersion, d, val -> workingId[0].radioVersion = val, true);
+        // P2: Build 补充字段
+        addFieldRow(form, "Build Tags", workingId[0].buildTags, d, val -> workingId[0].buildTags = val, true);
+        addFieldRow(form, "Build Type", workingId[0].buildType, d, val -> workingId[0].buildType = val, true);
+        addFieldRow(form, "Build User", workingId[0].buildUser, d, val -> workingId[0].buildUser = val, true);
+        addFieldRow(form, "Build Host", workingId[0].buildHost, d, val -> workingId[0].buildHost = val, true);
+        addFieldRow(form, "Build Display", workingId[0].buildDisplay, d, val -> workingId[0].buildDisplay = val, true);
 
         addSectionLabel(form, t("SIM信息", "SIM Info", "SIM инфо"), d);
         addFieldRow(form, "IMSI", workingId[0].imsi, d, val -> workingId[0].imsi = val, true);
         addFieldRow(form, "ICCID", workingId[0].iccid, d, val -> workingId[0].iccid = val, true);
+
+        // P2: 传感器指纹
+        addSectionLabel(form, t("传感器指纹 (P2)", "Sensor Fingerprint (P2)", "Отпечаток сенсоров (P2)"), d);
+        addFieldRow(form, t("传感器厂商", "Sensor Vendor", "Производитель сенсоров"), workingId[0].sensorVendor, d, val -> workingId[0].sensorVendor = val, true);
+        addFieldRow(form, t("传感器名称", "Sensor Name", "Название сенсоров"), workingId[0].sensorName, d, val -> workingId[0].sensorName = val, true);
+        addFieldRow(form, t("传感器版本", "Sensor Version", "Версия сенсоров"), workingId[0].sensorVersion, d, val -> workingId[0].sensorVersion = val, true);
+
+        // P1: Native 属性同步说明
+        addSectionLabel(form, t("Native 属性 (P1)", "Native Properties (P1)", "Нативные свойства (P1)"), d);
+        TextView p1Hint = new TextView(this);
+        p1Hint.setText(t("Native 层系统属性（ro.serialno / ro.build.fingerprint 等）自动从上方字段同步，无需手动编辑。PLT hook 会拦截应用通过 JNI 直接读取系统属性。",
+                "Native system properties (ro.serialno / ro.build.fingerprint etc.) are auto-synced from above fields. PLT hook intercepts direct JNI reads.",
+                "Нативные системные свойства автоматически синхронизируются. PLT hook перехватывает прямые чтения через JNI."));
+        p1Hint.setTextSize(11);
+        p1Hint.setTextColor(0x99FFFFFF);
+        form.addView(p1Hint);
 
         sv.addView(form);
         root.addView(sv, svLp);
@@ -2021,8 +2082,36 @@ public class MainActivity extends AppCompatActivity {
                 devInfo.append("Build ID: ").append(android.os.Build.ID).append("\n");
                 devInfo.append("Android Version: ").append(android.os.Build.VERSION.RELEASE).append("\n");
                 devInfo.append("SDK Level: ").append(android.os.Build.VERSION.SDK_INT).append("\n");
-                devInfo.append("Module Version: 4.5.0 (versionCode 450)\n");
+                devInfo.append("Module Version: 1.0.0 (versionCode 100)\n");
+                devInfo.append("Module: DeviceResetSpooferPlus\n");
+                devInfo.append("Package: io.github.gjr787878.deviceresetplus\n");
                 devInfo.append("Language: ").append(currentLang).append("\n");
+                // P0/P1/P2 增强层状态
+                devInfo.append("\n=== Enhancement Layers ===\n");
+                devInfo.append("P0 - Widevine DRM ID hook: ENABLED\n");
+                devInfo.append("P0 - Bluetooth MAC hook: ENABLED\n");
+                devInfo.append("P0 - /sdcard residual cleanup: ENABLED\n");
+                devInfo.append("P1 - Native system property PLT hook: ENABLED\n");
+                devInfo.append("P1 - Native lib: libdrs_native.so (arm64-v8a + armeabi-v7a)\n");
+                devInfo.append("P2 - Sensor fingerprint hook: ENABLED\n");
+                devInfo.append("P2 - Build extended fields (TAGS/TYPE/USER/HOST/DISPLAY): ENABLED\n");
+                devInfo.append("P2 - Settings.Global/System hook: ENABLED\n");
+                // Native 库加载检测
+                devInfo.append("\n=== Native Library Check ===\n");
+                try {
+                    System.loadLibrary("drs_native");
+                    devInfo.append("libdrs_native.so: LOADED OK\n");
+                } catch (UnsatisfiedLinkError e) {
+                    devInfo.append("libdrs_native.so: LOAD FAILED - ").append(e.getMessage()).append("\n");
+                }
+                // 更多设备信息字段
+                devInfo.append("\n=== Extended Device Info ===\n");
+                devInfo.append("Build.TAGS: ").append(android.os.Build.TAGS).append("\n");
+                devInfo.append("Build.TYPE: ").append(android.os.Build.TYPE).append("\n");
+                devInfo.append("Build.USER: ").append(android.os.Build.USER).append("\n");
+                devInfo.append("Build.HOST: ").append(android.os.Build.HOST).append("\n");
+                devInfo.append("Build.DISPLAY: ").append(android.os.Build.DISPLAY).append("\n");
+                devInfo.append("Build.BOOTLOADER: ").append(android.os.Build.BOOTLOADER).append("\n");
                 // Root 状态
                 devInfo.append("\n=== Root Status ===\n");
                 try {
@@ -2062,6 +2151,16 @@ public class MainActivity extends AppCompatActivity {
                 cfg.append("hook_gsf_id: ").append(Config.isHookGsf(this)).append("\n");
                 cfg.append("hook_carrier: ").append(Config.isHookCarrier(this)).append("\n");
                 cfg.append("auto_reset: ").append(Config.isAutoReset(this)).append("\n");
+                // P0/P1/P2 增强层（始终启用，无单独开关）
+                cfg.append("\n=== P0/P1/P2 Enhancement (always on) ===\n");
+                cfg.append("p0_mediadrm_hook: true\n");
+                cfg.append("p0_bluetooth_mac_hook: true\n");
+                cfg.append("p0_sdcard_cleanup: true\n");
+                cfg.append("p1_native_property_hook: true\n");
+                cfg.append("p1_native_lib: libdrs_native.so\n");
+                cfg.append("p2_sensor_hook: true\n");
+                cfg.append("p2_build_extended: true\n");
+                cfg.append("p2_settings_global: true\n");
                 cfg.append("\n=== Target Packages (from prefs) ===\n");
                 for (String p : Config.getTargetPackages(this)) cfg.append(p).append("\n");
                 writeFile(new java.io.File(tmpDir, "module_config.txt"), cfg.toString());
@@ -2116,7 +2215,7 @@ public class MainActivity extends AppCompatActivity {
                 lsp.append("=== LSPosed Status ===\n");
                 lsp.append("Module package: io.github.gjr787878.deviceresetplus\n");
                 lsp.append("Note: If no apps found with sentinel files, the module may not be enabled in LSPosed Manager.\n");
-                lsp.append("Check: LSPosed -> Modules -> DeviceResetSpooferX enabled (System Framework pre-checked) -> reboot once; then Save/Random in module UI for the target app.\n");
+                lsp.append("Check: LSPosed -> Modules -> DeviceResetSpooferPlus enabled (System Framework pre-checked) -> reboot once; then Save/Random in module UI for the target app.\n");
                 lsp.append("Expected in scan_result: HOOKED lines with 'ALL hooks installed, identity source=sentinel'.\n");
                 try {
                     Process su = Runtime.getRuntime().exec("su");
@@ -2330,10 +2429,10 @@ public class MainActivity extends AppCompatActivity {
 
     private void showAboutDialog() {
         new AlertDialog.Builder(this)
-                .setTitle("DeviceResetSpooferX")
-                .setMessage(t("版本：4.5.0\n\n免开框架管理器的设备伪装模块。\n\n在「应用」页点「＋选择应用」点选目标即自动写入作用域（root，几秒内生效，无需点通知）→ 打开详情「随机」或「自定义」→ 重新打开目标应用即生效；绿色「已注入✓」即已生效。\n支持中文 / English / Русский",
-                        "Version: 4.5.0\n\nDevice spoofing module that works without opening the framework manager.\n\nOn the Apps tab tap \"+ Select App\" and choose a target — the scope is written automatically (root, applies in a few seconds, no notification tap) -> open its detail, Random / Customize -> reopen the app; a green \"Injected✓\" means it is active.\nSupports Chinese / English / Russian",
-                        "Версия: 4.5.0\n\nМодуль подмены устройства, работающий без открытия менеджера фреймворка.\n\nНа вкладке «Приложения» нажмите «+ Выбрать приложение» — область записывается автоматически (root, применяется за несколько секунд, без нажатия на уведомление) -> откройте детали, «Случайно»/«Настроить» -> перезапустите приложение; зелёное «Внедрено✓» означает, что модуль активен.\nПоддерживает 中文 / English / Русский"))
+                .setTitle("DeviceResetSpooferPlus")
+                .setMessage(t("版本：1.0.0\n\n增强版设备伪装模块。在 DeviceResetSpoofer 基础上新增 P0 Widevine DRM + 蓝牙MAC + /sdcard清理、P1 Native系统属性PLT hook、P2 传感器指纹 + Build扩展 + Settings扩展。\n\n在「应用」页点「＋选择应用」点选目标即自动写入作用域（root，几秒内生效，无需点通知）→ 打开详情「随机」或「自定义」→ 重新打开目标应用即生效；绿色「已注入✓」即已生效。\n支持中文 / English / Русский",
+                        "Version: 1.0.0\n\nEnhanced device spoofing module. Adds P0 Widevine DRM + Bluetooth MAC + /sdcard cleanup, P1 Native system property PLT hook, P2 Sensor fingerprint + Build extended + Settings extended on top of DeviceResetSpoofer.\n\nOn the Apps tab tap \"+ Select App\" and choose a target — the scope is written automatically (root, applies in a few seconds, no notification tap) -> open its detail, Random / Customize -> reopen the app; a green \"Injected✓\" means it is active.\nSupports Chinese / English / Russian",
+                        "Версия: 1.0.0\n\nУлучшенный модуль подмены устройства. Добавлены P0 Widevine DRM + Bluetooth MAC + очистка /sdcard, P1 Native PLT hook системных свойств, P2 отпечаток сенсоров + расширенные Build + Settings поверх DeviceResetSpoofer.\n\nНа вкладке «Приложения» нажмите «+ Выбрать приложение» — область записывается автоматически (root, применяется за несколько секунд, без нажатия на уведомление) -> откройте детали, «Случайно»/«Настроить» -> перезапустите приложение; зелёное «Внедрено✓» означает, что модуль активен.\nПоддерживает 中文 / English / Русский"))
                 .setPositiveButton(t("确定", "OK", "ОК"), null)
                 .show();
     }
@@ -2443,7 +2542,7 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle(t("发现新版本 v", "New version v", "Доступна новая версия v") + latest)
                 .setMessage(t("检测到新版本，是否下载？", "New version detected. Download?", "Обнаружена новая версия. Скачать?"))
                 .setPositiveButton(t("下载", "Download", "Скачать"), (d, w) -> {
-                    String asset = "DeviceResetSpooferX-v" + latest + ".apk";
+                    String asset = "DeviceResetSpooferPlus-v" + latest + ".apk";
                     String direct = "https://github.com/" + UPDATE_REPO + "/releases/download/" + tag + "/" + asset;
                     String[] mirrors = {"https://ghfast.top/", "https://gh-proxy.com/", "https://ghproxy.net/",
                             "https://mirror.ghproxy.com/", "https://github.moeyy.xyz/"};
@@ -2451,7 +2550,7 @@ public class MainActivity extends AppCompatActivity {
                     for (int i = 0; i < mirrors.length; i++) urls[i] = mirrors[i] + direct;
                     urls[mirrors.length] = direct;
                     AppDownloader.start(this, urls, REPO_HOME_URL,
-                            "DeviceResetSpooferX-v" + latest + ".apk", latest, currentLang);
+                            "DeviceResetSpooferPlus-v" + latest + ".apk", latest, currentLang);
                 })
                 .setNegativeButton(t("取消", "Cancel", "Отмена"), null)
                 .show();
